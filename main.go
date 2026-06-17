@@ -1,29 +1,46 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 )
 
 func NewProxy(targetURL string) (http.Handler, error) {
-	target, err := url.Parse(targetURL)
+	pool, err := NewServerPool([]string{targetURL})
 	if err != nil {
 		return nil, err
 	}
-	return httputil.NewSingleHostReverseProxy(target), nil
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backend := pool.GetNextBackend()
+		backend.ReverseProxy.ServeHTTP(w, r)
+	}), nil
 }
 
 func main() {
-	targetURL := "http://localhost:8081"
-	proxy, err := NewProxy(targetURL)
+	cfg, err := LoadConfig("config.json")
 	if err != nil {
-		log.Fatalf("Failed to create proxy: %v", err)
+		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	log.Printf("Starting proxy server on :8080 forwarding to %s", targetURL)
-	if err := http.ListenAndServe(":8080", proxy); err != nil {
+	pool, err := NewServerPool(cfg.Backends)
+	if err != nil {
+		log.Fatalf("Failed to create server pool: %v", err)
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backend := pool.GetNextBackend()
+		log.Printf("Forwarding request to %s", backend.URL)
+		backend.ReverseProxy.ServeHTTP(w, r)
+	})
+
+	addr := fmt.Sprintf(":%d", cfg.Port)
+	log.Printf("Starting load balancer on %s with %d backends", addr, len(cfg.Backends))
+	for _, b := range cfg.Backends {
+		log.Printf("  -> %s", b)
+	}
+
+	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatal(err)
 	}
 }
