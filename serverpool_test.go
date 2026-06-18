@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync"
 	"testing"
 )
 
@@ -66,5 +67,29 @@ func TestGetNextBackendReturnsCorrectHost(t *testing.T) {
 	b3 := pool.GetNextBackend()
 	if b3.URL.Hostname() != "host-a" {
 		t.Errorf("expected wraparound to host-a, got %s", b3.URL.Hostname())
+	}
+}
+
+func TestRoundRobinConcurrency(t *testing.T) {
+	urls := []string{"http://localhost:8081", "http://localhost:8082", "http://localhost:8083"}
+	pool, err := NewServerPool(urls)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	iterations := 1000
+	wg.Add(iterations)
+
+	for i := 0; i < iterations; i++ {
+		go func() {
+			defer wg.Done()
+			pool.NextIndex()
+		}()
+	}
+	wg.Wait()
+
+	if pool.current != uint64(iterations) {
+		t.Errorf("expected counter to be %d, got %d", iterations, pool.current)
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"net/http/httputil"
 	"net/url"
+	"sync/atomic"
 )
 
 type Backend struct {
@@ -31,8 +32,7 @@ func NewServerPool(urls []string) (*ServerPool, error) {
 }
 
 func (s *ServerPool) NextIndex() int {
-	idx := s.current % uint64(len(s.backends))
-	s.current++
+	idx := (atomic.AddUint64(&s.current, 1) - 1) % uint64(len(s.backends))
 	return int(idx)
 }
 
