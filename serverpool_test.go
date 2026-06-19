@@ -93,3 +93,38 @@ func TestRoundRobinConcurrency(t *testing.T) {
 		t.Errorf("expected counter to be %d, got %d", iterations, pool.current)
 	}
 }
+
+func TestBackendAliveStatus(t *testing.T) {
+	b := &Backend{alive: true}
+
+	if !b.IsAlive() {
+		t.Errorf("expected backend to be alive")
+	}
+
+	b.SetAlive(false)
+	if b.IsAlive() {
+		t.Errorf("expected backend to be dead")
+	}
+}
+
+func TestBackendAliveConcurrency(t *testing.T) {
+	b := &Backend{alive: true}
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			b.SetAlive(i%2 == 0)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			b.IsAlive()
+		}
+	}()
+
+	wg.Wait()
+}

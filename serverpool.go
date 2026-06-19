@@ -3,12 +3,27 @@ package main
 import (
 	"net/http/httputil"
 	"net/url"
+	"sync"
 	"sync/atomic"
 )
 
 type Backend struct {
 	URL          *url.URL
 	ReverseProxy *httputil.ReverseProxy
+	mux          sync.RWMutex
+	alive        bool
+}
+
+func (b *Backend) SetAlive(alive bool) {
+	b.mux.Lock()
+	defer b.mux.Unlock()
+	b.alive = alive
+}
+
+func (b *Backend) IsAlive() bool {
+	b.mux.RLock()
+	defer b.mux.RUnlock()
+	return b.alive
 }
 
 type ServerPool struct {
@@ -26,6 +41,7 @@ func NewServerPool(urls []string) (*ServerPool, error) {
 		backends = append(backends, &Backend{
 			URL:          u,
 			ReverseProxy: httputil.NewSingleHostReverseProxy(u),
+			alive:        true,
 		})
 	}
 	return &ServerPool{backends: backends}, nil
