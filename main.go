@@ -13,6 +13,10 @@ func NewProxy(targetURL string) (http.Handler, error) {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		backend := pool.GetNextBackend()
+		if backend == nil {
+			http.Error(w, "all backends are down", http.StatusServiceUnavailable)
+			return
+		}
 		backend.ReverseProxy.ServeHTTP(w, r)
 	}), nil
 }
@@ -30,6 +34,10 @@ func main() {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		backend := pool.GetNextBackend()
+		if backend == nil {
+			http.Error(w, "all backends are down", http.StatusServiceUnavailable)
+			return
+		}
 		log.Printf("Forwarding request to %s", backend.URL)
 		backend.ReverseProxy.ServeHTTP(w, r)
 	})
