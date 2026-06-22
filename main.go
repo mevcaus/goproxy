@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 )
 
 func NewProxy(targetURL string) (http.Handler, error) {
@@ -41,6 +42,9 @@ func main() {
 		log.Printf("Forwarding request to %s", backend.URL)
 		backend.ReverseProxy.ServeHTTP(w, r)
 	})
+
+	StartHealthCheck(pool, 10*time.Second)
+	log.Println("Health checker started (every 10s)")
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("Starting load balancer on %s with %d backends", addr, len(cfg.Backends))
