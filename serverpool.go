@@ -8,10 +8,11 @@ import (
 )
 
 type Backend struct {
-	URL          *url.URL
-	ReverseProxy *httputil.ReverseProxy
-	mux          sync.RWMutex
-	alive        bool
+	URL               *url.URL
+	ReverseProxy      *httputil.ReverseProxy
+	mux               sync.RWMutex
+	alive             bool
+	activeConnections int64
 }
 
 func (b *Backend) SetAlive(alive bool) {
@@ -24,6 +25,18 @@ func (b *Backend) IsAlive() bool {
 	b.mux.RLock()
 	defer b.mux.RUnlock()
 	return b.alive
+}
+
+func (b *Backend) AddConn() {
+	atomic.AddInt64(&b.activeConnections, 1)
+}
+
+func (b *Backend) RemoveConn() {
+	atomic.AddInt64(&b.activeConnections, -1)
+}
+
+func (b *Backend) ActiveConnections() int64 {
+	return atomic.LoadInt64(&b.activeConnections)
 }
 
 type ServerPool struct {
