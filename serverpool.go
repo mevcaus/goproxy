@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"net/http/httputil"
 	"net/url"
 	"sync"
@@ -74,4 +75,21 @@ func (s *ServerPool) GetNextBackend() *Backend {
 		}
 	}
 	return nil
+}
+
+func (s *ServerPool) GetLeastConnBackend() *Backend {
+	var best *Backend
+	var minConn int64 = math.MaxInt64
+
+	for _, b := range s.backends {
+		if !b.IsAlive() {
+			continue
+		}
+		conns := b.ActiveConnections()
+		if conns < minConn {
+			minConn = conns
+			best = b
+		}
+	}
+	return best
 }
