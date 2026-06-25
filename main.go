@@ -34,12 +34,20 @@ func main() {
 	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		backend := pool.GetNextBackend()
+		var backend *Backend
+		switch cfg.Strategy {
+		case "least_connections":
+			backend = pool.GetLeastConnBackend()
+		default:
+			backend = pool.GetNextBackend()
+		}
 		if backend == nil {
 			http.Error(w, "all backends are down", http.StatusServiceUnavailable)
 			return
 		}
-		log.Printf("Forwarding request to %s", backend.URL)
+		backend.AddConn()
+		defer backend.RemoveConn()
+		log.Printf("[%s] Forwarding request to %s (active: %d)", cfg.Strategy, backend.URL, backend.ActiveConnections())
 		backend.ReverseProxy.ServeHTTP(w, r)
 	})
 
