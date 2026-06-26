@@ -61,6 +61,42 @@ func TestLoadConfigMissingFile(t *testing.T) {
 	}
 }
 
+func TestLoadConfigDefaultStrategy(t *testing.T) {
+	json := `{"backends": ["http://localhost:8081"]}`
+	path := writeTemp(t, json)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Strategy != "round_robin" {
+		t.Errorf("expected default strategy round_robin, got %s", cfg.Strategy)
+	}
+}
+
+func TestLoadConfigLeastConnections(t *testing.T) {
+	json := `{"backends": ["http://localhost:8081"], "strategy": "least_connections"}`
+	path := writeTemp(t, json)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Strategy != "least_connections" {
+		t.Errorf("expected strategy least_connections, got %s", cfg.Strategy)
+	}
+}
+
+func TestLoadConfigBadStrategy(t *testing.T) {
+	json := `{"backends": ["http://localhost:8081"], "strategy": "random"}`
+	path := writeTemp(t, json)
+
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("expected error for unknown strategy, got nil")
+	}
+}
+
 func writeTemp(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()

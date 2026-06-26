@@ -128,3 +128,86 @@ func TestBackendAliveConcurrency(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestConnectionTracking(t *testing.T) {
+	b := &Backend{alive: true}
+
+	if b.ActiveConnections() != 0 {
+		t.Errorf("expected 0 connections, got %d", b.ActiveConnections())
+	}
+
+	b.AddConn()
+	b.AddConn()
+	b.AddConn()
+
+	if b.ActiveConnections() != 3 {
+		t.Errorf("expected 3 connections, got %d", b.ActiveConnections())
+	}
+
+	b.RemoveConn()
+
+	if b.ActiveConnections() != 2 {
+		t.Errorf("expected 2 connections, got %d", b.ActiveConnections())
+	}
+}
+
+func TestLeastConnPicksLowest(t *testing.T) {
+	pool, err := NewServerPool([]string{
+		"http://host-a:8081",
+		"http://host-b:8082",
+		"http://host-c:8083",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	pool.backends[0].AddConn()
+	pool.backends[0].AddConn()
+	pool.backends[0].AddConn()
+	pool.backends[1].AddConn()
+
+	got := pool.GetLeastConnBackend()
+	if got.URL.Hostname() != "host-c" {
+		t.Errorf("expected host-c (0 conns), got %s", got.URL.Hostname())
+	}
+}
+
+func TestLeastConnSkipsDead(t *testing.T) {
+	pool, err := NewServerPool([]string{
+		"http://host-a:8081",
+		"http://host-b:8082",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	pool.backends[0].SetAlive(false)
+	pool.backends[1].AddConn()
+
+	got := pool.GetLeastConnBackend()
+	if got == nil {
+		t.Fatal("expected a backend, got nil")
+	}
+	if got.URL.Hostname() != "host-b" {
+		t.Errorf("expected host-b (only alive), got %s", got.URL.Hostname())
+	}
+}
+
+func TestLeastConnAllDead(t *testing.T) {
+	pool, err := NewServerPool([]string{
+		"http://host-a:8081",
+		"http://host-b:8082",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	pool.backends[0].SetAlive(false)
+	pool.backends[1].SetAlive(false)
+
+	got := pool.GetLeastConnBackend()
+	if got != nil {
+		t.Errorf("expected nil when all dead, got %s", got.URL)
+	}
+}
+
