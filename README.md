@@ -9,19 +9,22 @@ I built this to deepen my understanding of reverse proxies, load balancing algor
 `goproxy` sits in front of a pool of backend HTTP servers and distributes incoming requests across them. It handles backend failures gracefully and supports multiple routing strategies.
 
 ```
-         ┌──────────────┐
-         │   Clients    │
-         └──────┬───────┘
+        ┌────────────────┐
+        │    Clients     │
+        └───────┬────────┘
                 │
-         ┌──────▼───────┐
-         │   goproxy    │
-         │  :8080       │
-         └──┬───┬───┬───┘
-            │   │   │
-   ┌────────▼┐ ┌▼────────┐ ┌▼────────┐
-   │ :8081   │ │ :8082   │ │ :8083   │
-   │ Backend │ │ Backend │ │ Backend │
-   └─────────┘ └─────────┘ └─────────┘
+        ┌───────▼────────┐
+        │    goproxy     │
+        │     :8080      │
+        └──┬────┬────┬───┘
+           │    │    │
+  ┌────────┘    │    └────────┐
+  │             │             │
+  ▼             ▼             ▼
+┌─────────┐ ┌─────────┐ ┌─────────┐
+│ :8081   │ │ :8082   │ │ :8083   │
+│ Backend │ │ Backend │ │ Backend │
+└─────────┘ └─────────┘ └─────────┘
 ```
 
 ## Features
@@ -29,7 +32,7 @@ I built this to deepen my understanding of reverse proxies, load balancing algor
 - **Reverse Proxying** — Built on `net/http/httputil.ReverseProxy` from the standard library. Handles header forwarding, chunked transfers, and connection management out of the box.
 - **Round Robin** — Cycles through backends sequentially using an atomic counter (`sync/atomic`) so concurrent requests never cause a data race on the routing index.
 - **Least Connections** — Tracks active connections per backend with atomic counters and routes each new request to the backend currently handling the fewest.
-- **Active Health Checking** — A background goroutine pings each backend via TCP every 10 seconds. Dead backends are marked with a `sync.RWMutex`-protected flag so the router skips them without blocking readers.
+- **Active Health Checking** — A background goroutine hits each backend's `/health` endpoint via HTTP every 10 seconds. Unlike a TCP dial (which only proves the port is open), this verifies the application is actually responding. Dead backends are marked with a `sync.RWMutex`-protected flag so the router skips them without blocking readers.
 - **JSON Configuration** — Backends, port, and routing strategy are defined in `config.json`. No recompilation needed to change the topology.
 
 ## Architecture
@@ -84,6 +87,7 @@ Edit `config.json`:
 {
   "port": 8080,
   "strategy": "round_robin",
+  "health_path": "/health",
   "backends": [
     "http://localhost:8081",
     "http://localhost:8082",
@@ -92,7 +96,8 @@ Edit `config.json`:
 }
 ```
 
-`strategy` accepts `round_robin` or `least_connections`.
+- `strategy` accepts `round_robin` or `least_connections`.
+- `health_path` is the endpoint the health checker will GET on each backend (defaults to `/health`).
 
 ### Run
 
@@ -101,8 +106,8 @@ Edit `config.json`:
 ```
 
 ```
-2026/06/25 12:00:00 Health checker started (every 10s)
-2026/06/25 12:00:00 Starting load balancer on :8080 with 3 backends
+2026/06/27 10:00:00 Health checker started (every 10s, path: /health)
+2026/06/27 10:00:00 Starting load balancer on :8080 with 3 backends
 2026/06/25 12:00:00   -> http://localhost:8081
 2026/06/25 12:00:00   -> http://localhost:8082
 2026/06/25 12:00:00   -> http://localhost:8083
@@ -114,13 +119,13 @@ Edit `config.json`:
 go test -v -race ./...
 ```
 
-There are 25 tests covering:
+There are 26 tests covering:
 
-- Config parsing (valid input, defaults, validation errors)
+- Config parsing (valid input, defaults, strategy validation, health path)
 - Round robin cycling and wraparound
 - Concurrent access to the round robin counter (1000 goroutines)
 - Backend alive status toggling under concurrent read/write
-- TCP liveness probes against real listeners
+- HTTP health endpoint probing (200 = alive, 500 = dead, unreachable = dead)
 - Health checker marking backends dead after server shutdown
 - Routing that skips dead backends
 - Least connections picking the backend with fewest active connections
@@ -131,10 +136,9 @@ There are 25 tests covering:
 
 Only the Go standard library:
 
-- `net/http` — HTTP server and client
+- `net/http` — HTTP server, client, and health check probes
 - `net/http/httputil` — `ReverseProxy` implementation
 - `net/url` — URL parsing
-- `net` — TCP dial for health checks
 - `sync` — `RWMutex` for alive status
 - `sync/atomic` — Lock-free counters
 - `encoding/json` — Config parsing
