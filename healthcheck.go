@@ -1,24 +1,29 @@
 package main
 
 import (
+	"fmt"
 	"log"
-	"net"
+	"net/http"
 	"time"
 )
 
-func isBackendAlive(u string) bool {
-	conn, err := net.DialTimeout("tcp", u, 2*time.Second)
+var healthClient = &http.Client{
+	Timeout: 2 * time.Second,
+}
+
+func isBackendAlive(backendURL, healthPath string) bool {
+	url := fmt.Sprintf("%s%s", backendURL, healthPath)
+	resp, err := healthClient.Get(url)
 	if err != nil {
 		return false
 	}
-	conn.Close()
-	return true
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }
 
-func (s *ServerPool) HealthCheck() {
+func (s *ServerPool) HealthCheck(healthPath string) {
 	for _, b := range s.backends {
-		addr := b.URL.Host
-		alive := isBackendAlive(addr)
+		alive := isBackendAlive(b.URL.String(), healthPath)
 		b.SetAlive(alive)
 		if !alive {
 			log.Printf("Backend %s is down", b.URL)
@@ -26,11 +31,11 @@ func (s *ServerPool) HealthCheck() {
 	}
 }
 
-func StartHealthCheck(pool *ServerPool, interval time.Duration) {
+func StartHealthCheck(pool *ServerPool, interval time.Duration, healthPath string) {
 	ticker := time.NewTicker(interval)
 	go func() {
 		for range ticker.C {
-			pool.HealthCheck()
+			pool.HealthCheck(healthPath)
 		}
 	}()
 }

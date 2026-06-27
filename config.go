@@ -7,9 +7,10 @@ import (
 )
 
 type Config struct {
-	Port     int      `json:"port"`
-	Backends []string `json:"backends"`
-	Strategy string   `json:"strategy"`
+	Port       int      `json:"port"`
+	Backends   []string `json:"backends"`
+	Strategy   string   `json:"strategy"`
+	HealthPath string   `json:"health_path"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -34,6 +35,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.Strategy != "round_robin" && cfg.Strategy != "least_connections" {
 		return nil, fmt.Errorf("unknown strategy: %s (use round_robin or least_connections)", cfg.Strategy)
+	}
+	if cfg.HealthPath == "" {
+		cfg.HealthPath = "/health"
 	}
 
 	return &cfg, nil
