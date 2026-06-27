@@ -1,27 +1,40 @@
 package main
 
 import (
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
-func TestIsBackendAlive(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("failed to start listener: %v", err)
-	}
-	defer ln.Close()
+func TestIsBackendAliveHTTP(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer backend.Close()
 
-	if !isBackendAlive(ln.Addr().String()) {
-		t.Error("expected alive for open listener")
+	if !isBackendAlive(backend.URL, "/health") {
+		t.Error("expected alive when /health returns 200")
 	}
 }
 
-func TestIsBackendDead(t *testing.T) {
-	if isBackendAlive("127.0.0.1:1") {
-		t.Error("expected dead for closed port")
+func TestIsBackendDeadHTTP(t *testing.T) {
+	if isBackendAlive("http://127.0.0.1:1", "/health") {
+		t.Error("expected dead for unreachable host")
+	}
+}
+
+func TestIsBackendDeadOn500(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer backend.Close()
+
+	if isBackendAlive(backend.URL, "/health") {
+		t.Error("expected dead when /health returns 500")
 	}
 }
 
@@ -35,14 +48,14 @@ func TestHealthCheckMarksDeadBackend(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	pool.HealthCheck()
+	pool.HealthCheck("/health")
 	if !pool.backends[0].IsAlive() {
 		t.Error("expected backend to be alive after health check")
 	}
 
 	backend.Close()
 
-	pool.HealthCheck()
+	pool.HealthCheck("/health")
 	if pool.backends[0].IsAlive() {
 		t.Error("expected backend to be dead after server closed")
 	}
