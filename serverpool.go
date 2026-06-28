@@ -68,8 +68,9 @@ func (s *ServerPool) NextIndex() int {
 
 func (s *ServerPool) GetNextBackend() *Backend {
 	total := len(s.backends)
+	next := s.NextIndex()
 	for i := 0; i < total; i++ {
-		idx := s.NextIndex()
+		idx := (next + i) % total
 		if s.backends[idx].IsAlive() {
 			return s.backends[idx]
 		}

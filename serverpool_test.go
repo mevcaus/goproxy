@@ -94,6 +94,27 @@ func TestRoundRobinConcurrency(t *testing.T) {
 	}
 }
 
+func TestRoundRobinCounterAdvancesOncePerRequest(t *testing.T) {
+	pool, err := NewServerPool([]string{
+		"http://host-a:8081",
+		"http://host-b:8082",
+		"http://host-c:8083",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	pool.backends[0].SetAlive(false)
+
+	before := pool.current
+	pool.GetNextBackend()
+	after := pool.current
+
+	if after-before != 1 {
+		t.Errorf("expected counter to advance by 1, advanced by %d", after-before)
+	}
+}
+
 func TestBackendAliveStatus(t *testing.T) {
 	b := &Backend{alive: true}
 
